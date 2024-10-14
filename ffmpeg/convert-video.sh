@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -e
+set -o pipefail
 
 # Ensure required arguments are set
 if [[ -z "$input_video" ]] || [[ -z "$output_dir" ]]; then
@@ -21,37 +22,40 @@ export output_dir
 # Create the output directory if it doesn't exist
 mkdir -p "$output_dir"
 
-# Initialize the master playlist content
-master_playlist_content="#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-INDEPENDENT-SEGMENTS"
+complete_master_playlist() {
+  height="$1"
 
-# Function to get stream information using ffprobe
-get_stream_info() {
-  local playlist_file="$1"
+  # Extract current bandwidth from the master playlist
+  current_bandwidth=$(grep 'BANDWIDTH' "$output_dir/master_${height}p.m3u8" | sed -n 's/.*BANDWIDTH=\([0-9]*\).*/\1/p' | head -1)
+  if [[ -z "$current_bandwidth" ]]; then
+    echo "Failed to extract bandwidth"
+    return 1
+  fi
 
-  # Extract video and audio codec information
-  local video_codec=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,profile -of csv=p=0 "$playlist_file" | awk -F',' '{print $1"."$2}')
-  local audio_codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 "$playlist_file")
+  # Calculate 75% of the current bandwidth for average bandwidth
+  average_bandwidth=$(($current_bandwidth * 75 / 100))
 
-  # Extract bandwidth from video stream
-  local bandwidth=$(ffprobe -v error -select_streams v:0 -show_entries format=bit_rate -of csv=p=0 "$playlist_file" | awk '{print $1}')  # In bits per second
-  local average_bandwidth=$((bandwidth * 90 / 100))  # Estimate 90% of peak bandwidth
+  # Update master playlist with the new average bandwidth and frame rate
+  if [[ "$(uname)" == "Darwin" ]]; then
+    sed -i "" "s/\(BANDWIDTH=$current_bandwidth\)/\1,AVERAGE-BANDWIDTH=$average_bandwidth,FRAME-RATE=30.000/" "$output_dir/master_${height}p.m3u8"
+  else
+    sed -i "s/\(BANDWIDTH=$current_bandwidth\)/\1,AVERAGE-BANDWIDTH=$average_bandwidth,FRAME-RATE=30.000/" "$output_dir/master_${height}p.m3u8"
+  fi
 
-  # Extract frame rate
-  local frame_rate=$(ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 "$playlist_file" | bc)
-
-  # Extract actual resolution
-  local resolution=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x "$playlist_file")
-
-  # Output master playlist info for this stream
-  echo "#EXT-X-STREAM-INF:BANDWIDTH=$bandwidth,AVERAGE-BANDWIDTH=$average_bandwidth,CODECS=\"${video_codec},${audio_codec}\",RESOLUTION=$resolution,FRAME-RATE=$frame_rate"
+  if [ $? -ne 0 ]; then
+    echo "Error updating master playlist"
+    return 1
+  fi
 }
 
+# Initialize the master playlist content
+master_playlist_content="#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-INDEPENDENT-SEGMENTS"
 
 # Process 480p if requested
 if [[ "$hls_480p" == "1" ]]; then
   echo "Processing 480p..."
   bash "$(dirname "$0")/presets/hls_480p.sh"
-  stream_info=$(get_stream_info "$output_dir/master_480p.m3u8")
+  complete_master_playlist "480"
   master_playlist_content+="\n$(tail -n 3 "$output_dir/master_480p.m3u8")"
 fi
 
@@ -59,7 +63,7 @@ fi
 if [[ "$hls_720p" == "1" ]]; then
   echo "Processing 720p..."
   bash "$(dirname "$0")/presets/hls_720p.sh"
-  stream_info=$(get_stream_info "$output_dir/master_720p.m3u8")
+  complete_master_playlist "720"
   master_playlist_content+="\n$(tail -n 3 "$output_dir/master_720p.m3u8")"
 fi
 
@@ -67,7 +71,7 @@ fi
 if [[ "$hls_1080p" == "1" ]]; then
   echo "Processing 1080p..."
   bash "$(dirname "$0")/presets/hls_1080p.sh"
-  stream_info=$(get_stream_info "$output_dir/master_1080p.m3u8")
+  complete_master_playlist "1080"
   master_playlist_content+="\n$(tail -n 3 "$output_dir/master_1080p.m3u8")"
 fi
 

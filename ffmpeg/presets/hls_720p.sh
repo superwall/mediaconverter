@@ -22,7 +22,7 @@ ffmpeg -i "$input_video" \
 -ac 2 \
 -ar 44100 \
 -f hls \
--hls_time 4 \
+-hls_time 9 \
 -hls_list_size 0 \
 -hls_segment_type mpegts \
 -hls_flags delete_segments \
