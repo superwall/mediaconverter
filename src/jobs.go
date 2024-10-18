@@ -145,9 +145,27 @@ func postToCallback(job Job, status string, message string) {
 	}
 
 	jsonPayload, _ := json.Marshal(payload)
-	_, err := http.Post(job.Request.CallbackURL, "application/json", strings.NewReader(string(jsonPayload)))
-	if err != nil {
-		log.Printf("Failed to post callback for job %s: %v\n", job.JobID, err)
+	retryIntervals := []time.Duration{time.Minute * 1, time.Minute * 5, time.Minute * 15, time.Minute * 30}
+	var resp *http.Response
+	var err error
+
+	for i, interval := range retryIntervals {
+		resp, err = http.Post(job.Request.CallbackURL, "application/json", strings.NewReader(string(jsonPayload)))
+		if err == nil && resp.StatusCode == 200 {
+			break
+		}
+
+		if i == len(retryIntervals)-1 {
+			log.Printf("Failed to post callback for job %s after all retries: %v\n", job.JobID, err)
+			break
+		}
+
+		log.Printf("Failed to post callback for job %s (attempt %d): %v. Retrying in %v...\n", job.JobID, i+1, err, interval)
+		time.Sleep(interval)
+	}
+
+	if resp != nil {
+		resp.Body.Close()
 	}
 }
 
