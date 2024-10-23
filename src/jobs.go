@@ -1,6 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -8,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -37,6 +40,10 @@ func init() {
 		JobQueue = make(chan Job, MaxSimultaneousJobs)
 	} else {
 		log.Fatalf("Error: MAX_SIMULTANEOUS_JOBS is not set")
+	}
+
+	if os.Getenv("WEBHOOK_SECRET") == "" {
+		log.Fatalf("Error: WEBHOOK_SECRET is not set")
 	}
 }
 
@@ -95,7 +102,7 @@ func downloadVideo(job Job, videoPath string) error {
 }
 
 func runConversionScript(job Job, inputPath, outputDir string) error {
-	log.Printf("[jid: %s] Running conversion script\n", job.JobID)
+	log.Printf("[jid: %s] Running conversion script...\n", job.JobID)
 
 	cmd := exec.Command("./ffmpeg/convert-video.sh")
 	cmd.Env = append(os.Environ(),
@@ -134,7 +141,7 @@ func handleJobFailure(job Job, errorMsg string) {
 }
 
 func postToCallback(job Job, status string, message string) {
-	log.Printf("Posting callback for job %s\n", job.JobID)
+	log.Printf("[jid: %s] Posting callback...\n", job.JobID)
 
 	var payload = map[string]interface{}{}
 	payload["id"] = job.Request.ID
@@ -145,22 +152,41 @@ func postToCallback(job Job, status string, message string) {
 	}
 
 	jsonPayload, _ := json.Marshal(payload)
+
+	secret := []byte(os.Getenv("WEBHOOK_SECRET"))
+	h := hmac.New(sha256.New, secret)
+	h.Write(jsonPayload)
+	signature := hex.EncodeToString(h.Sum(nil))
+
 	retryIntervals := []time.Duration{time.Minute * 1, time.Minute * 5, time.Minute * 15, time.Minute * 30}
 	var resp *http.Response
 	var err error
 
 	for i, interval := range retryIntervals {
-		resp, err = http.Post(job.Request.CallbackURL, "application/json", strings.NewReader(string(jsonPayload)))
+
+		req, reqErr := http.NewRequest("POST", job.Request.CallbackURL, bytes.NewReader(jsonPayload))
+		if reqErr != nil {
+			log.Printf("[jid: %s] Failed to create request: %v\n", job.JobID, reqErr)
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+
+		timestamp := time.Now().UnixMilli()
+		req.Header.Set("Grmc-Signature", fmt.Sprintf("t=%d,v0=%s", timestamp, signature))
+
+		client := &http.Client{}
+		resp, err = client.Do(req)
 		if err == nil && resp.StatusCode == 200 {
+			log.Printf("[jid: %s] Successfully posted callback\n", job.JobID)
 			break
 		}
 
 		if i == len(retryIntervals)-1 {
-			log.Printf("Failed to post callback for job %s after all retries: %v\n", job.JobID, err)
+			log.Printf("[jid: %s] Failed to post callback after all retries: %v\n", job.JobID, err)
 			break
 		}
 
-		log.Printf("Failed to post callback for job %s (attempt %d): %v. Retrying in %v...\n", job.JobID, i+1, err, interval)
+		log.Printf("[jid: %s] Failed to post callback (attempt %d): %v / %s. Retrying in %v...\n", job.JobID, i+1, err, resp.Status, interval)
 		time.Sleep(interval)
 	}
 
