@@ -52,3 +52,7 @@ make && dotenv -f .env ./mediaconverter
 # First time: dotenv -f ./.env.production kamal setup
 dotenv -f ./.env.production kamal deploy
 ```
+
+## License
+
+Gumroad Mediaconverter is licensed under the [MIT License](LICENSE.md).
