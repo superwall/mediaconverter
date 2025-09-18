@@ -1,5 +1,7 @@
 # Gumroad Mediaconverter (GRMC)
 
+A video conversion service that transforms video files into HLS streaming formats using FFmpeg.
+
 ## Endpoints
 
 ### POST /convert
