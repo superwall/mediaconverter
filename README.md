@@ -1,6 +1,6 @@
 # Gumroad Mediaconverter (GRMC)
 
-A video conversion service that transforms video files into HLS streaming formats using FFmpeg.
+A video conversion service that transforms video files into HLS streaming formats using FFmpeg. Compatible with AWS S3, Cloudflare R2, and other S3-compatible storage services.
 
 ## Endpoints
 
@@ -32,6 +32,35 @@ curl --basic -u $YOUR_API_KEY: -X GET $GRMC_SERVER/status
 ### GET /up
 
 Returns 200 OK if the server is running and environment variables are set.
+
+## Configuration
+
+### Storage Services
+
+This service supports multiple S3-compatible storage providers:
+
+#### AWS S3
+```env
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+```
+
+#### Cloudflare R2
+```env
+S3_ENDPOINT=https://YOUR_ACCOUNT_ID.r2.cloudflarestorage.com
+AWS_ACCESS_KEY_ID=your_r2_access_key
+AWS_SECRET_ACCESS_KEY=your_r2_secret_key
+# AWS_REGION is optional for R2 (can be omitted or set to "auto")
+```
+
+#### Other S3-Compatible Services
+```env
+S3_ENDPOINT=https://your-s3-compatible-endpoint.com
+AWS_ACCESS_KEY_ID=your_access_key
+AWS_SECRET_ACCESS_KEY=your_secret_key
+AWS_REGION=your-region  # if required by the service
+```
 
 ## Development
 

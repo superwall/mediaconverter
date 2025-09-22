@@ -11,7 +11,6 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 )
 
 func downloadFromS3(s3URI string, localPath string) error {
@@ -65,7 +64,6 @@ func uploadToS3(localDir string, s3URI string) error {
 			Bucket: aws.String(bucket),
 			Key:    aws.String(filepath.Join(key, file.Name())),
 			Body:   fileContent,
-			ACL:    types.ObjectCannedACLPublicRead,
 		})
 		if err != nil {
 			return fmt.Errorf("failed to upload HLS file to S3: %v", err)

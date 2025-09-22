@@ -16,14 +16,33 @@ const defaultPort = "7454"
 func init() {
 	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
 
-	cfg, err := awsConfig.LoadDefaultConfig(context.TODO(),
-		awsConfig.WithRegion(os.Getenv("AWS_REGION")),
-	)
+	// Build config options
+	configOptions := []func(*awsConfig.LoadOptions) error{}
+
+	// Add region if specified (optional for R2)
+	if region := os.Getenv("AWS_REGION"); region != "" {
+		configOptions = append(configOptions, awsConfig.WithRegion(region))
+	} else {
+		// Default to us-east-1 for AWS S3 compatibility, R2 ignores this
+		configOptions = append(configOptions, awsConfig.WithRegion("us-east-1"))
+	}
+
+	cfg, err := awsConfig.LoadDefaultConfig(context.TODO(), configOptions...)
 	if err != nil {
 		log.Fatalf("Error initializing AWS config: %v", err)
 	}
 
-	awsClient = s3.NewFromConfig(cfg)
+	// Create S3 client with custom endpoint if specified (for R2 or other S3-compatible services)
+	s3Options := []func(*s3.Options){}
+	if endpoint := os.Getenv("S3_ENDPOINT"); endpoint != "" {
+		s3Options = append(s3Options, func(o *s3.Options) {
+			o.BaseEndpoint = &endpoint
+			// For R2 and other S3-compatible services, use path-style addressing
+			o.UsePathStyle = true
+		})
+	}
+
+	awsClient = s3.NewFromConfig(cfg, s3Options...)
 }
 
 func main() {
